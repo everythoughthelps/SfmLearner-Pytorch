@@ -13,15 +13,16 @@ from utils import tensor2array
 parser = argparse.ArgumentParser(description='Inference script for DispNet learned with \
                                  Structure from Motion Learner inference on KITTI and CityScapes Dataset',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("--output-disp", action='store_true', help="save disparity img")
-parser.add_argument("--output-depth", action='store_true', help="save depth img")
-parser.add_argument("--pretrained", required=True, type=str, help="pretrained DispNet path")
+parser.add_argument("--output-disp", action='store_true',  help="save disparity img")
+parser.add_argument("--output-depth", action='store_true', default=True,help="save depth img")
+parser.add_argument("--pretrained", default='./checkpoints/kitti,epoch_size1000,seq5,s2.0/10-06-09:53/dispnet_model_best.pth.tar',
+                    type=str, help="pretrained DispNet path")
 parser.add_argument("--img-height", default=128, type=int, help="Image height")
 parser.add_argument("--img-width", default=416, type=int, help="Image width")
 parser.add_argument("--no-resize", action='store_true', help="no resizing is done")
 
-parser.add_argument("--dataset-list", default=None, type=str, help="Dataset list file")
-parser.add_argument("--dataset-dir", default='.', type=str, help="Dataset directory")
+parser.add_argument("--dataset-list", default='./kitti_eval/test_files_eigen.txt', type=str, help="Dataset list file")
+parser.add_argument("--dataset-dir", default='/data/kitti/kitti_raw', type=str, help="Dataset directory")
 parser.add_argument("--output-dir", default='output', type=str, help="Output directory")
 
 parser.add_argument("--img-exts", default=['png', 'jpg', 'bmp'], nargs='*', type=str, help="images extensions to glob")
@@ -59,7 +60,7 @@ def main():
 
         h,w,_ = img.shape
         if (not args.no_resize) and (h != args.img_height or w != args.img_width):
-            img = np.array(Image.fromarray(img).imresize((args.img_height, args.img_width)))
+            img = np.array(Image.fromarray(img).resize((args.img_width,args.img_height)))
         img = np.transpose(img, (2, 0, 1))
 
         tensor_img = torch.from_numpy(img.astype(np.float32)).unsqueeze(0)
@@ -78,7 +79,7 @@ def main():
             imsave(output_dir/'{}_disp{}'.format(file_name, file_ext), np.transpose(disp, (1,2,0)))
         if args.output_depth:
             depth = 1/output
-            depth = (255*tensor2array(depth, max_value=10, colormap='rainbow')).astype(np.uint8)
+            depth = (255*tensor2array(depth, max_value=None, colormap='magma')).astype(np.uint8)
             imsave(output_dir/'{}_depth{}'.format(file_name, file_ext), np.transpose(depth, (1,2,0)))
 
 

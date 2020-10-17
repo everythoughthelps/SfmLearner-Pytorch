@@ -165,7 +165,7 @@ def inverse_warp(img, depth, pose, intrinsics, rotation_mode='euler', padding_mo
         projected_img: Source image warped to the target image plane
         valid_points: Boolean array indicating point validity
     """
-    check_sizes(img, 'img', 'B3HW')
+    #check_sizes(img, 'img', 'B3HW')
     check_sizes(depth, 'depth', 'BHW')
     check_sizes(pose, 'pose', 'B6')
     check_sizes(intrinsics, 'intrinsics', 'B33')

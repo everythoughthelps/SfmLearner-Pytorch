@@ -9,6 +9,7 @@ import torch.optim
 import torch.utils.data
 import custom_transforms
 import models
+from models.modeling.deeplab import *
 from utils import tensor2array, save_checkpoint, save_path_formatter, log_output_tensorboard
 
 from loss_functions import photometric_reconstruction_loss, explainability_loss, smooth_loss, compute_errors
@@ -18,7 +19,7 @@ from tensorboardX import SummaryWriter
 parser = argparse.ArgumentParser(description='Structure from Motion Learner training on KITTI and CityScapes Dataset',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-parser.add_argument('data', metavar='DIR',
+parser.add_argument('data', metavar='DIR',default='/data/kitti/kitti_post/',
                     help='path to dataset')
 parser.add_argument('--dataset-format', default='sequential', metavar='STR',
                     help='dataset format, stacked: stacked frames (from original TensorFlow code) \
@@ -64,10 +65,22 @@ parser.add_argument('--log-full', default='progress_log_full.csv', metavar='PATH
 parser.add_argument('-p', '--photo-loss-weight', type=float, help='weight for photometric loss', metavar='W', default=1)
 parser.add_argument('-m', '--mask-loss-weight', type=float, help='weight for explainabilty mask loss', metavar='W', default=0)
 parser.add_argument('-s', '--smooth-loss-weight', type=float, help='weight for disparity smoothness loss', metavar='W', default=0.1)
+parser.add_argument('-g', '--seg_loss', type=float, help='weight for disparity smoothness loss', metavar='W', default=0.1)
 parser.add_argument('--log-output', action='store_true', help='will log dispnet outputs and warped imgs at validation step')
 parser.add_argument('-f', '--training-output-freq', type=int,
                     help='frequence for outputting dispnet outputs and warped imgs at training for all scales if 0 will not output',
                     metavar='N', default=0)
+parser.add_argument('--backbone', type=str, default='resnet',
+                    choices=['resnet', 'xception', 'drn', 'mobilenet'],
+                    help='backbone name (default: resnet)')
+parser.add_argument('--sync-bn', type=bool, default=None,
+                    help='whether to use sync bn (default: auto)')
+parser.add_argument('--freeze-bn', type=bool, default=False,
+                    help='whether to freeze bn parameters (default: False)')
+parser.add_argument('--nclass', type=int, default=10,
+                    help='number of classes')
+parser.add_argument('--out-stride', type=int, default=16,
+                    help='network output stride (default: 8)')
 
 best_error = -1
 n_iter = 0
@@ -142,6 +155,11 @@ def main():
     print("=> creating model")
 
     disp_net = models.DispNetS().to(device)
+    seg_net = DeepLab(num_classes=args.nclass,
+                        backbone=args.backbone,
+                        output_stride=args.out_stride,
+                        sync_bn=args.sync_bn,
+                        freeze_bn=args.freeze_bn).to(device)
     output_exp = args.mask_loss_weight > 0
     if not output_exp:
         print("=> no mask loss, PoseExpnet will only output pose")
@@ -164,6 +182,7 @@ def main():
     cudnn.benchmark = True
     disp_net = torch.nn.DataParallel(disp_net)
     pose_exp_net = torch.nn.DataParallel(pose_exp_net)
+    seg_net = torch.nn.DataParallel(seg_net)
 
     print('=> setting adam solver')
 
@@ -202,7 +221,7 @@ def main():
 
         # train for one epoch
         logger.reset_train_bar()
-        train_loss = train(args, train_loader, disp_net, pose_exp_net, optimizer, args.epoch_size, logger, tb_writer)
+        train_loss = train(args, train_loader, disp_net, pose_exp_net, seg_net, optimizer, args.epoch_size, logger, tb_writer)
         logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
         # evaluate on validation set
@@ -241,16 +260,17 @@ def main():
     logger.epoch_bar.finish()
 
 
-def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, logger, tb_writer):
+def train(args, train_loader, disp_net, pose_exp_net, seg_net, optimizer, epoch_size, logger, tb_writer):
     global n_iter, device
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter(precision=4)
-    w1, w2, w3 = args.photo_loss_weight, args.mask_loss_weight, args.smooth_loss_weight
+    w1, w2, w3 ,w4 = args.photo_loss_weight, args.mask_loss_weight, args.smooth_loss_weight,args.seg_loss
 
     # switch to train mode
     disp_net.train()
     pose_exp_net.train()
+    seg_net.train()
 
     end = time.time()
     logger.train_bar.update(0)
@@ -267,10 +287,15 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
 
         # compute output
         disparities = disp_net(tgt_img)
+        tgt_seg= seg_net(tgt_img)
+        ref_seg = [seg_net(i) for i in ref_imgs]
         depth = [1/disp for disp in disparities]
         explainability_mask, pose = pose_exp_net(tgt_img, ref_imgs)
 
         loss_1, warped, diff = photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
+                                                               depth, explainability_mask, pose,
+                                                               args.rotation_mode, args.padding_mode)
+        loss_seg, warped_seg, diff_seg= photometric_reconstruction_loss(tgt_seg, ref_seg, intrinsics,
                                                                depth, explainability_mask, pose,
                                                                args.rotation_mode, args.padding_mode)
         if w2 > 0:
@@ -279,7 +304,7 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
             loss_2 = 0
         loss_3 = smooth_loss(depth)
 
-        loss = w1*loss_1 + w2*loss_2 + w3*loss_3
+        loss = w1*loss_1 + w2*loss_2 + w3*loss_3 + w4*loss_seg
 
         if log_losses:
             tb_writer.add_scalar('photometric_error', loss_1.item(), n_iter)
@@ -287,6 +312,7 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
                 tb_writer.add_scalar('explanability_loss', loss_2.item(), n_iter)
             tb_writer.add_scalar('disparity_smoothness_loss', loss_3.item(), n_iter)
             tb_writer.add_scalar('total_loss', loss.item(), n_iter)
+            tb_writer.add_scalar('seg_loss', loss_seg.item(), n_iter)
 
         if log_output:
             tb_writer.add_image('train Input', tensor2array(tgt_img[0]), n_iter)

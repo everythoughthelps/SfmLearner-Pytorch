@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0 python3 train.py /data/kitti/kitti_post/ -b4 -m0.2 -s0.1 -g0.1 --epoch-size 3000 --sequence-length 3 --log-output --with-gt

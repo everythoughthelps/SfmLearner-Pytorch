@@ -49,6 +49,8 @@ class cityscapes_loader(object):
         # create scene data dicts, and subsample scene every two frames
         for scene_id in connex_scenes.keys():
             intrinsics = self.load_intrinsics(city, scene_id)
+            if intrinsics is None:
+                continue
             for subscene in connex_scenes[scene_id]:
                 frame_speeds = [self.load_speed(city, scene_id, frame_id) for frame_id in subscene]
                 connex_scene_data_list.append({'city':city,
@@ -68,7 +70,11 @@ class cityscapes_loader(object):
     def load_intrinsics(self, city, scene_id):
         city_name = city.basename()
         camera_folder = self.dataset_dir/'camera'/self.split/city_name
-        camera_file = camera_folder.files('{}_*_{}_camera.json'.format(city_name, scene_id))[0]
+        try:
+            camera_file = camera_folder.files('{}_*_{}_camera.json'.format(city_name, scene_id))[0]
+        except:
+            return None
+        print('after', scene_id)
         frame_id = camera_file.split('_')[1]
         frame_path = city/'{}_{}_{}_leftImg8bit.png'.format(city_name, frame_id, scene_id)
 
