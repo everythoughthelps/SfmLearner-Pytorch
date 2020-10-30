@@ -46,9 +46,9 @@ class DispNetS(nn.Module):
 
         self.alpha = alpha
         self.beta = beta
-
+        self.pad = torch.nn.ZeroPad2d(padding = (0,0,0,1))
         conv_planes = [32, 64, 128, 256, 512, 512, 512]
-        self.conv1 = downsample_conv(3,              conv_planes[0], kernel_size=7)
+        self.conv1 = downsample_conv(4,              conv_planes[0], kernel_size=7)
         self.conv2 = downsample_conv(conv_planes[0], conv_planes[1], kernel_size=5)
         self.conv3 = downsample_conv(conv_planes[1], conv_planes[2])
         self.conv4 = downsample_conv(conv_planes[2], conv_planes[3])
@@ -85,8 +85,9 @@ class DispNetS(nn.Module):
                 if m.bias is not None:
                     zeros_(m.bias)
 
-    def forward(self, x):
-        out_conv1 = self.conv1(x)
+    def forward(self, x,y):
+        y = self.pad(y)
+        out_conv1 = self.conv1(torch.cat((x,y),1))
         out_conv2 = self.conv2(out_conv1)
         out_conv3 = self.conv3(out_conv2)
         out_conv4 = self.conv4(out_conv3)
