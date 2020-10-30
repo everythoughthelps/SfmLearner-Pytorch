@@ -236,7 +236,7 @@ def main():
         # evaluate on validation set
         logger.reset_valid_bar()
         if args.with_gt:
-            errors, error_names = validate_with_gt(args, val_loader, disp_net, epoch, logger, tb_writer)
+            errors, error_names = validate_with_gt(args, val_loader, disp_net, seg_net,epoch, logger, tb_writer)
         else:
             errors, error_names = validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger, tb_writer)
         error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names, errors))
@@ -434,7 +434,7 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
 
 
 @torch.no_grad()
-def validate_with_gt(args, val_loader, disp_net, epoch, logger, tb_writer, sample_nb_to_log=3):
+def validate_with_gt(args, val_loader, disp_net, segnet,epoch, logger, tb_writer, sample_nb_to_log=3):
     global device
     batch_time = AverageMeter()
     error_names = ['abs_diff', 'abs_rel', 'sq_rel', 'a1', 'a2', 'a3']
@@ -451,7 +451,9 @@ def validate_with_gt(args, val_loader, disp_net, epoch, logger, tb_writer, sampl
         depth = depth.to(device)
 
         # compute output
-        output_disp = disp_net(tgt_img)
+        tgt_seg= segnet(tgt_img)
+        edge = tgt_seg[:,:,0:-1,:] - tgt_seg[:,:,1:,:]
+        output_disp = disp_net(tgt_img,edge)
         output_depth = 1/output_disp[:,0]
 
         if log_outputs and i < sample_nb_to_log:
