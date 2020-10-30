@@ -55,6 +55,11 @@ parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
 parser.add_argument('--pretrained-disp', dest='pretrained_disp', default=None, metavar='PATH',
                     help='path to pre-trained dispnet model')
+parser.add_argument('--pretrained-seg-net', dest='pretrained_seg',
+                    default='/home/panmeng/PycharmProjects/pt1.1/pytorch-deeplab-xception/run/kitti/deeplab-resnet/'
+                            'experiment_2/checkpoint.pth.tar',
+                    metavar='PATH',
+                    help='path to pre-trained dispnet model')
 parser.add_argument('--pretrained-exppose', dest='pretrained_exp_pose', default=None, metavar='PATH',
                     help='path to pre-trained Exp Pose net model')
 parser.add_argument('--seed', default=0, type=int, help='seed for random functions, and network initialization')
@@ -143,7 +148,7 @@ def main():
     print('{} samples found in {} valid scenes'.format(len(val_set), len(val_set.scenes)))
     train_loader = torch.utils.data.DataLoader(
         train_set, batch_size=args.batch_size, shuffle=True,
-        num_workers=args.workers, pin_memory=True)
+        num_workers=args.workers, pin_memory=True,drop_last=True)
     val_loader = torch.utils.data.DataLoader(
         val_set, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
@@ -160,6 +165,10 @@ def main():
                         output_stride=args.out_stride,
                         sync_bn=args.sync_bn,
                         freeze_bn=args.freeze_bn).to(device)
+    if args.pretrained_seg:
+        print("=> using pre-trained weights for seg net")
+        weights = torch.load(args.pretrained_seg)
+        seg_net.load_state_dict(weights, strict=False)
     output_exp = args.mask_loss_weight > 0
     if not output_exp:
         print("=> no mask loss, PoseExpnet will only output pose")
