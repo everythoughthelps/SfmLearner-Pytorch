@@ -279,7 +279,7 @@ def train(args, train_loader, disp_net, pose_exp_net, seg_net, optimizer, epoch_
     # switch to train mode
     disp_net.train()
     pose_exp_net.train()
-    seg_net.train()
+    seg_net.eval()
 
     end = time.time()
     logger.train_bar.update(0)
