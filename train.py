@@ -62,7 +62,7 @@ parser.add_argument('--log-summary', default='progress_log_summary.csv', metavar
                     help='csv where to save per-epoch train and valid stats')
 parser.add_argument('--log-full', default='progress_log_full.csv', metavar='PATH',
                     help='csv where to save per-gradient descent train stats')
-parser.add_argument('-p', '--photo-loss-weight', type=float, help='weight for photometric loss', metavar='W', default=1)
+#parser.add_argument('-p', '--photo-loss-weight', type=float, help='weight for photometric loss', metavar='W', default=1)
 parser.add_argument('-m', '--mask-loss-weight', type=float, help='weight for explainabilty mask loss', metavar='W', default=0)
 parser.add_argument('-s', '--smooth-loss-weight', type=float, help='weight for disparity smoothness loss', metavar='W', default=0.1)
 parser.add_argument('-g', '--seg_loss', type=float, help='weight for disparity smoothness loss', metavar='W', default=0.1)
@@ -265,7 +265,7 @@ def train(args, train_loader, disp_net, pose_exp_net, seg_net, optimizer, epoch_
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter(precision=4)
-    w1, w2, w3 ,w4 = args.photo_loss_weight, args.mask_loss_weight, args.smooth_loss_weight,args.seg_loss
+    w2, w3 ,w4 = args.mask_loss_weight, args.smooth_loss_weight,args.seg_loss
 
     # switch to train mode
     disp_net.train()
@@ -293,9 +293,9 @@ def train(args, train_loader, disp_net, pose_exp_net, seg_net, optimizer, epoch_
         depth = [1/disp for disp in disparities]
         explainability_mask, pose = pose_exp_net(tgt_img, ref_imgs)
 
-        loss_1, warped, diff = photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
-                                                               depth, explainability_mask, pose,
-                                                               args.rotation_mode, args.padding_mode)
+        #loss_1, warped, diff = photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
+        #                                                       depth, explainability_mask, pose,
+        #                                                       args.rotation_mode, args.padding_mode)
         loss_seg, warped_seg, diff_seg= photometric_reconstruction_loss(tgt_seg, ref_seg, intrinsics,
                                                                depth, explainability_mask, pose,
                                                                args.rotation_mode, args.padding_mode)
@@ -305,19 +305,18 @@ def train(args, train_loader, disp_net, pose_exp_net, seg_net, optimizer, epoch_
             loss_2 = 0
         loss_3 = smooth_loss(depth)
 
-        loss = w1*loss_1 + w2*loss_2 + w3*loss_3 + w4*loss_seg
+        loss = w2*loss_2 + w3*loss_3 + w4*loss_seg
 
         if log_losses:
-            tb_writer.add_scalar('photometric_error', loss_1.item(), n_iter)
+            tb_writer.add_scalar('seg_loss', loss_seg.item(), n_iter)
             if w2 > 0:
                 tb_writer.add_scalar('explanability_loss', loss_2.item(), n_iter)
             tb_writer.add_scalar('disparity_smoothness_loss', loss_3.item(), n_iter)
             tb_writer.add_scalar('total_loss', loss.item(), n_iter)
-            tb_writer.add_scalar('seg_loss', loss_seg.item(), n_iter)
 
         if log_output:
             tb_writer.add_image('train Input', tensor2array(tgt_img[0]), n_iter)
-            for k, scaled_maps in enumerate(zip(depth, disparities, warped, diff, explainability_mask)):
+            for k, scaled_maps in enumerate(zip(depth, disparities, warped_seg, diff_seg, explainability_mask)):
                 log_output_tensorboard(tb_writer, "train", 0, " {}".format(k), n_iter, *scaled_maps)
 
         # record loss and EPE
@@ -334,7 +333,7 @@ def train(args, train_loader, disp_net, pose_exp_net, seg_net, optimizer, epoch_
 
         with open(args.save_path/args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
-            writer.writerow([loss.item(), loss_1.item(), loss_2.item() if w2 > 0 else 0, loss_3.item()])
+            writer.writerow([loss.item(), loss_2.item() if w2 > 0 else 0, loss_3.item()])
         logger.train_bar.update(i+1)
         if i % args.print_freq == 0:
             logger.train_writer.write('Train: Time {} Data {} Loss {}'.format(batch_time, data_time, losses))

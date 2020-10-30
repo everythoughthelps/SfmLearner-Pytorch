@@ -24,7 +24,6 @@ def save_path_formatter(args, parser):
     keys_with_prefix['padding_mode'] = 'padding_'
     keys_with_prefix['batch_size'] = 'b'
     keys_with_prefix['lr'] = 'lr'
-    keys_with_prefix['photo_loss_weight'] = 'p'
     keys_with_prefix['mask_loss_weight'] = 'm'
     keys_with_prefix['smooth_loss_weight'] = 's'
 
